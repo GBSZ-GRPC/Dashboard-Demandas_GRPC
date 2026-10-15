@@ -604,7 +604,7 @@ def build_demandas_finalizadas_layout():
 app.layout = html.Div(
     id="app-shell",
     className="theme-light",
-    style={"height": "100vh", "minHeight": 0, "overflow": "hidden", "display": "flex", "flexDirection": "column"},
+    style={"minHeight": "100vh", "overflow": "visible", "display": "flex", "flexDirection": "column"},
     children=[
         # Barra de Navegação Superior (Header)
         dbc.Navbar(
