@@ -10,6 +10,7 @@ Módulos:
 
 import sys
 import threading
+import re
 from pathlib import Path
 import duckdb
 import pandas as pd
@@ -89,34 +90,32 @@ def build_issue_search_options(df, key_column="chave", summary_column="resumo"):
 
 
 def get_latest_jira_comment():
-    """Retorna o comentário mais recente se os campos estiverem no feed do Jira."""
+    """Retorna o comentário mais recente da entidade Comments do Jira."""
     con = duckdb.connect(DUCKDB_PATH, read_only=True)
     try:
         columns = {
             row[0].lower(): row[0]
-            for row in con.execute("DESCRIBE issues").fetchall()
+            for row in con.execute('DESCRIBE "comments"').fetchall()
         }
-        body_col = next(
-            (columns[name] for name in ("comment", "comment_body", "comment_text") if name in columns),
-            None
-        )
-        author_col = next(
-            (columns[name] for name in ("comment_author", "comment_author_name") if name in columns),
-            None
-        )
-        date_col = next(
-            (columns[name] for name in ("comment_updated", "comment_created") if name in columns),
-            None
-        )
+        body_col = columns.get("comment_body")
+        author_col = columns.get("comment_author")
+        created_col = columns.get("comment_created")
+        updated_col = columns.get("comment_updated")
         if not body_col or not author_col:
             return None
 
         quote = lambda name: '"' + name.replace('"', '""') + '"'
-        order_by = f"TRY_CAST({quote(date_col)} AS TIMESTAMP) DESC NULLS LAST" if date_col else "1"
+        # Comentários são ordenados pela criação, não por edição posterior.
+        # A atualização só é usada quando a fonte não tem data de criação.
+        date_col = created_col or updated_col
+        order_by = (
+            f"TRY_CAST({quote(date_col)} AS TIMESTAMP) DESC NULLS LAST"
+            if date_col else "1"
+        )
         result = con.execute(
             f"""
             SELECT {quote(author_col)}, {quote(body_col)}
-            FROM issues
+            FROM comments
             WHERE NULLIF(TRIM(CAST({quote(body_col)} AS VARCHAR)), '') IS NOT NULL
             ORDER BY {order_by}
             LIMIT 1
@@ -124,30 +123,33 @@ def get_latest_jira_comment():
         ).fetchone()
         if not result:
             return None
-        return {"author": str(result[0] or "Autor não informado"), "body": str(result[1])}
+        body = str(result[1])
+        # O Jira representa anexos no texto como [^nome-do-arquivo].
+        body = re.sub(r"\s*\[\^[^\]]+\]", "", body)
+        body = re.sub(r"\n{3,}", "\n\n", body).strip()
+        return {"author": str(result[0] or "Autor não informado"), "body": body}
+    except duckdb.CatalogException:
+        # O banco pode ainda não conter a entidade até a primeira sincronização após a mudança.
+        return None
     finally:
         con.close()
 
-
 def build_latest_comment_card():
     comment = get_latest_jira_comment()
-    if comment:
-        content = [
-            html.Div(comment["author"], className="fw-bold text-dark mb-1"),
-            html.Div(comment["body"], style={"whiteSpace": "pre-wrap", "overflowWrap": "anywhere"})
-        ]
-    else:
-        content = html.Span(
-            "Os campos de comentário ainda não estão disponíveis. Habilite Comment Author, Comment Body e Comment Created/Updated na seção Comments do conector Appfire.",
-            className="text-muted"
-        )
+    if not comment:
+        return None
+
+    content = [
+        html.Div(comment["author"], className="fw-bold text-dark mb-1"),
+        html.Div(comment["body"], className="latest-comment-body")
+    ]
     return dbc.Card([
         dbc.CardHeader([
             html.I(className="fa-regular fa-comment-dots text-primary me-2"),
             html.Span("Último comentário do Jira", className="fw-bold")
         ], className="bg-transparent border-0 pb-0"),
         dbc.CardBody(content, className="pt-2")
-    ], className="shadow-sm border-0 rounded-4 mb-4")
+    ], className="latest-comment-card shadow border rounded-4")
 
 
 def get_cadernos_data():
@@ -637,6 +639,17 @@ app.layout = html.Div(
             className="shadow-sm py-3 border-bottom sticky-top flex-shrink-0"
         ),
 
+        # Comentário mais recente permanece visível no topo em todas as abas.
+        html.Div(
+            id="latest-jira-comment-container",
+            className="latest-comment-popover",
+            style={"display": "none"},
+            children=[
+                dbc.Button("×", id="close-latest-comment", color="link", className="latest-comment-close", n_clicks=0, title="Fechar"),
+                html.Div(id="latest-comment-card-content")
+            ]
+        ),
+
         # Loading da Sincronização
         dcc.Loading(
             id="loading-sync",
@@ -676,6 +689,7 @@ app.layout = html.Div(
 
         # Armazenamento de disparo de carga
         dcc.Store(id="store-data-trigger"),
+        dcc.Store(id="latest-comment-dismissed", data=False),
         dcc.Store(id="theme-store", storage_type="local", data="light"),
         dcc.Interval(id="sync-progress-interval", interval=1000, disabled=True, n_intervals=0)
     ]
@@ -691,6 +705,26 @@ app.layout = html.Div(
 )
 def toggle_theme(_, current_theme):
     return "dark" if current_theme != "dark" else "light"
+
+
+@app.callback(
+    [
+        Output("latest-comment-card-content", "children"),
+        Output("latest-jira-comment-container", "style"),
+        Output("latest-comment-dismissed", "data")
+    ],
+    [Input("store-data-trigger", "data"), Input("close-latest-comment", "n_clicks")],
+    State("latest-comment-dismissed", "data"),
+    prevent_initial_call=False
+)
+def refresh_latest_jira_comment(_, close_clicks, dismissed):
+    if ctx.triggered_id == "close-latest-comment" and close_clicks:
+        return no_update, {"display": "none"}, True
+
+    card = build_latest_comment_card()
+    if not card or dismissed:
+        return card, {"display": "none"}, dismissed
+    return card, {}, False
 
 
 @app.callback(

@@ -24,6 +24,7 @@ DUCKDB_PATH = str(APP_DIR / "jira.duckdb")
 
 ENTITIES = [
     "Issues",
+    "Comments",
     "Categorias",
     "Subtarefas",
     "Sprints"

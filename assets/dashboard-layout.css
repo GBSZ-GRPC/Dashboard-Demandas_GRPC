@@ -23,6 +23,55 @@ body {
     z-index: 5;
 }
 
+.latest-comment-popover {
+    position: fixed;
+    top: 5.5rem;
+    right: 1.25rem;
+    z-index: 20;
+    width: min(24rem, calc(100vw - 2rem));
+}
+
+.latest-comment-card {
+    margin: 0;
+    max-height: min(15rem, calc(100vh - 7rem));
+    overflow: hidden;
+    background: var(--bs-body-bg, #fff);
+}
+
+.latest-comment-card .card-header {
+    min-height: 2.6rem;
+    padding-right: 2.5rem;
+}
+
+.latest-comment-card .card-body {
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+    font-size: 0.9rem;
+}
+
+.latest-comment-body {
+    white-space: pre-wrap;
+}
+
+.latest-comment-close {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.5rem;
+    z-index: 1;
+    padding: 0 0.25rem;
+    color: inherit;
+    font-size: 1.5rem;
+    line-height: 1;
+    text-decoration: none;
+}
+
+@media (max-width: 576px) {
+    .latest-comment-popover {
+        top: 5rem;
+        right: 0.5rem;
+    }
+}
+
 #loading-sync {
     flex: 0 0 auto;
     max-height: 3rem;
