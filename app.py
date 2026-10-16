@@ -124,8 +124,9 @@ def get_latest_jira_comment():
         if not result:
             return None
         body = str(result[1])
-        # O Jira representa anexos no texto como [^nome-do-arquivo].
-        body = re.sub(r"\s*\[\^[^\]]+\]", "", body)
+        # Remove qualquer marcador entre colchetes (anexos, menções e códigos Jira).
+        body = re.sub(r"\[[^\]]*\]", " ", body)
+        body = re.sub(r"[ \t]{2,}", " ", body)
         body = re.sub(r"\n{3,}", "\n\n", body).strip()
         return {"author": str(result[0] or "Autor não informado"), "body": body}
     except duckdb.CatalogException:

@@ -73,7 +73,7 @@ Os filtros e tabelas trabalham sobre os dados retornados pelas funções de aces
 
 ### Acesso ao DuckDB e comentário recente
 
-As funções `get_data()`, `get_cadernos_data()`, `get_demandas_finalizadas_data()` e `get_demanda_subtarefas()` consultam o banco em modo `read_only=True`. O caminho do banco é calculado em relação à aplicação/executável. `get_latest_jira_comment()` consulta a tabela `comments`, carregada pela entidade `Comments` do feed OData. Ela ordena pela data de criação (ou, se a coluna não existir, pela data de atualização) e remove referências a anexos no formato `[^nome-do-arquivo]` antes de exibir autor e texto. A entidade precisa estar habilitada no feed do conector Appfire.
+As funções `get_data()`, `get_cadernos_data()`, `get_demandas_finalizadas_data()` e `get_demanda_subtarefas()` consultam o banco em modo `read_only=True`. O caminho do banco é calculado em relação à aplicação/executável. `get_latest_jira_comment()` consulta a tabela `comments`, carregada pela entidade `Comments` do feed OData. Ela ordena pela data de criação (ou, se a coluna não existir, pela data de atualização) e remove qualquer conteúdo entre colchetes antes de exibir o comentário. A entidade precisa estar habilitada no feed do conector Appfire.
 
 ### Sincronização sem bloquear a interface
 
