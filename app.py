@@ -2591,6 +2591,7 @@ def update_geral(tipo_sel, prioridade_sel, situacao_sel, demanda_key, _, theme):
     )
     priority_text_color = "#FFFFFF" if theme == "dark" else COLORS["text"]
     fig_prioridade.update_traces(
+        textfont={"color": priority_text_color},
         insidetextfont={"color": priority_text_color},
         outsidetextfont={"color": priority_text_color}
     )
