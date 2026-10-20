@@ -142,12 +142,34 @@ color: var(--dark-surface) !important;
 
 .theme-dark .js-plotly-plot .xtick text,
 .theme-dark .js-plotly-plot .ytick text,
+.theme-dark .js-plotly-plot .text,
+.theme-dark .js-plotly-plot .textpoint,
+.theme-dark .js-plotly-plot .bartext,
+.theme-dark .js-plotly-plot .slicetext,
+.theme-dark .js-plotly-plot .pielayer text,
+.theme-dark .js-plotly-plot .scatterlayer text,
+.theme-dark .js-plotly-plot .treemap text,
 .theme-dark .js-plotly-plot .gtitle,
 .theme-dark .js-plotly-plot .legend text,
+.theme-dark .js-plotly-plot .legendtext,
 .theme-dark .js-plotly-plot .annotation-text,
 .theme-dark .js-plotly-plot .g-xtitle,
-.theme-dark .js-plotly-plot .g-ytitle {
-    fill: #cbd5e1 !important;
+.theme-dark .js-plotly-plot .g-ytitle,
+.theme-dark .js-plotly-plot .g-xtitle text,
+.theme-dark .js-plotly-plot .g-ytitle text,
+.theme-dark .js-plotly-plot .xtitle,
+.theme-dark .js-plotly-plot .ytitle,
+.theme-dark .js-plotly-plot .cbaxis text,
+.theme-dark .js-plotly-plot .colorbar text {
+    fill: #ffffff !important;
+}
+
+.theme-dark .js-plotly-plot .xtick text tspan,
+.theme-dark .js-plotly-plot .ytick text tspan,
+.theme-dark .js-plotly-plot .text tspan,
+.theme-dark .js-plotly-plot .slicetext tspan,
+.theme-dark .js-plotly-plot .legendtext tspan {
+    fill: #ffffff !important;
 }
 
 .theme-dark .js-plotly-plot .gridlayer path,
