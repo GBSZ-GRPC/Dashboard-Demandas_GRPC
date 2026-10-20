@@ -172,6 +172,12 @@ color: var(--dark-surface) !important;
     fill: #ffffff !important;
 }
 
+/* Plotly usa classes SVG diferentes para texto de indicadores, gauges e setores. */
+.theme-dark .js-plotly-plot svg text,
+.theme-dark .js-plotly-plot svg tspan {
+    fill: #ffffff !important;
+}
+
 .theme-dark .js-plotly-plot .gridlayer path,
 .theme-dark .js-plotly-plot .zerolinelayer path,
 .theme-dark .js-plotly-plot .xlines-below path,
