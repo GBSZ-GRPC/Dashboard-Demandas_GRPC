@@ -2544,10 +2544,11 @@ def download_ct_csv(n_clicks, situacao_sel, aging_sel, relator_sel, meta_sla_sel
         Input("filter-prioridade", "value"),
         Input("filter-situacao", "value"),
         Input("geral-search-resumo", "value"),
-        Input("store-data-trigger", "data")
+        Input("store-data-trigger", "data"),
+        Input("theme-store", "data")
     ]
 )
-def update_geral(tipo_sel, prioridade_sel, situacao_sel, demanda_key, _):
+def update_geral(tipo_sel, prioridade_sel, situacao_sel, demanda_key, _, theme):
     df, _ = get_data()
     dff = df.copy()
     if tipo_sel:
@@ -2587,6 +2588,11 @@ def update_geral(tipo_sel, prioridade_sel, situacao_sel, demanda_key, _):
     fig_prioridade = px.pie(
         df_prioridade, names="prioridade", values="qtd", hole=0.55, color="prioridade",
         color_discrete_map={"Crítico": "#DC2626", "Alto": "#EA580C", "Médio": "#3B82F6", "Baixo": "#10B981"}
+    )
+    priority_text_color = "#FFFFFF" if theme == "dark" else COLORS["text"]
+    fig_prioridade.update_traces(
+        insidetextfont={"color": priority_text_color},
+        outsidetextfont={"color": priority_text_color}
     )
     fig_prioridade.update_layout(margin=dict(l=10, r=10, t=10, b=20), height=320)
 
