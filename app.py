@@ -89,69 +89,57 @@ def build_issue_search_options(df, key_column="chave", summary_column="resumo"):
     return options
 
 
-def get_latest_jira_comment():
-    """Retorna o comentário mais recente da entidade Comments do Jira."""
+def get_latest_jira_comments_by_issue():
+    """Retorna o comentario mais recente de cada demanda pela chave Jira."""
     con = duckdb.connect(DUCKDB_PATH, read_only=True)
     try:
-        columns = {
-            row[0].lower(): row[0]
-            for row in con.execute('DESCRIBE "comments"').fetchall()
-        }
+        columns = {row[0].lower(): row[0] for row in con.execute('DESCRIBE "comments"').fetchall()}
+        key_col = columns.get("chave")
         body_col = columns.get("comment_body")
         author_col = columns.get("comment_author")
         created_col = columns.get("comment_created")
         updated_col = columns.get("comment_updated")
-        if not body_col or not author_col:
-            return None
-
+        if not key_col or not body_col:
+            return {}
         quote = lambda name: '"' + name.replace('"', '""') + '"'
-        # Comentários são ordenados pela criação, não por edição posterior.
-        # A atualização só é usada quando a fonte não tem data de criação.
         date_col = created_col or updated_col
-        order_by = (
-            f"TRY_CAST({quote(date_col)} AS TIMESTAMP) DESC NULLS LAST"
-            if date_col else "1"
-        )
-        result = con.execute(
-            f"""
-            SELECT {quote(author_col)}, {quote(body_col)}
+        order_by = f"TRY_CAST({quote(date_col)} AS TIMESTAMP) DESC NULLS LAST" if date_col else "1"
+        rows = con.execute(f"""
+            SELECT {quote(key_col)}, {quote(author_col) if author_col else "NULL"}, {quote(body_col)}
             FROM comments
             WHERE NULLIF(TRIM(CAST({quote(body_col)} AS VARCHAR)), '') IS NOT NULL
-            ORDER BY {order_by}
-            LIMIT 1
-            """
-        ).fetchone()
-        if not result:
-            return None
-        body = str(result[1])
-        # Remove qualquer marcador entre colchetes (anexos, menções e códigos Jira).
-        body = re.sub(r"\[[^\]]*\]", " ", body)
-        body = re.sub(r"[ \t]{2,}", " ", body)
-        body = re.sub(r"\n{3,}", "\n\n", body).strip()
-        return {"author": str(result[0] or "Autor não informado"), "body": body}
+            QUALIFY ROW_NUMBER() OVER (
+                PARTITION BY {quote(key_col)} ORDER BY {order_by}
+            ) = 1
+        """).fetchall()
+        result = {}
+        for key, author, body in rows:
+            if key is None:
+                continue
+            body = re.sub(r"\[[^\]]*\]", " ", str(body))
+            body = re.sub(r"[ \t]{2,}", " ", body)
+            body = re.sub(r"\n{3,}", "\n\n", body).strip()
+            author = str(author).strip() if author is not None and str(author).strip() else "Autor n\u00e3o informado"
+            result[str(key).strip()] = f"{author}\n{body}" if body else author
+        return result
     except duckdb.CatalogException:
-        # O banco pode ainda não conter a entidade até a primeira sincronização após a mudança.
-        return None
+        return {}
     finally:
         con.close()
 
-def build_latest_comment_card():
-    comment = get_latest_jira_comment()
-    if not comment:
-        return None
 
-    content = [
-        html.Div(comment["author"], className="fw-bold text-dark mb-1"),
-        html.Div(comment["body"], className="latest-comment-body")
-    ]
-    return dbc.Card([
-        dbc.CardHeader([
-            html.I(className="fa-regular fa-comment-dots text-primary me-2"),
-            html.Span("Último comentário do Jira", className="fw-bold")
-        ], className="bg-transparent border-0 pb-0"),
-        dbc.CardBody(content, className="pt-2")
-    ], className="latest-comment-card shadow border rounded-4")
+def add_latest_comment_column(df, key_column):
+    """Acrescenta o comentario mais recente da chave Jira a cada linha."""
+    result = df.copy()
+    comment_map = get_latest_jira_comments_by_issue()
+    result["ultimo_comentario"] = result[key_column].map(
+        lambda key: comment_map.get(str(key).strip(), "") if pd.notna(key) else ""
+    ) if key_column in result.columns else ""
+    return result
 
+
+def add_latest_comment_column_definition(columns):
+    return columns + [{"name": "\u00daltimo coment\u00e1rio", "id": "ultimo_comentario"}]
 
 def get_cadernos_data():
     """Consulta dados analíticos agregados de cadernos e versões do DuckDB."""
@@ -640,17 +628,6 @@ app.layout = html.Div(
             className="shadow-sm py-3 border-bottom sticky-top flex-shrink-0"
         ),
 
-        # Comentário mais recente permanece visível no topo em todas as abas.
-        html.Div(
-            id="latest-jira-comment-container",
-            className="latest-comment-popover",
-            style={"display": "none"},
-            children=[
-                dbc.Button("×", id="close-latest-comment", color="link", className="latest-comment-close", n_clicks=0, title="Fechar"),
-                html.Div(id="latest-comment-card-content")
-            ]
-        ),
-
         # Loading da Sincronização
         dcc.Loading(
             id="loading-sync",
@@ -690,7 +667,6 @@ app.layout = html.Div(
 
         # Armazenamento de disparo de carga
         dcc.Store(id="store-data-trigger"),
-        dcc.Store(id="latest-comment-dismissed", data=False),
         dcc.Store(id="theme-store", storage_type="local", data="light"),
         dcc.Interval(id="sync-progress-interval", interval=1000, disabled=True, n_intervals=0)
     ]
@@ -706,26 +682,6 @@ app.layout = html.Div(
 )
 def toggle_theme(_, current_theme):
     return "dark" if current_theme != "dark" else "light"
-
-
-@app.callback(
-    [
-        Output("latest-comment-card-content", "children"),
-        Output("latest-jira-comment-container", "style"),
-        Output("latest-comment-dismissed", "data")
-    ],
-    [Input("store-data-trigger", "data"), Input("close-latest-comment", "n_clicks")],
-    State("latest-comment-dismissed", "data"),
-    prevent_initial_call=False
-)
-def refresh_latest_jira_comment(_, close_clicks, dismissed):
-    if ctx.triggered_id == "close-latest-comment" and close_clicks:
-        return no_update, {"display": "none"}, True
-
-    card = build_latest_comment_card()
-    if not card or dismissed:
-        return card, {"display": "none"}, dismissed
-    return card, {}, False
 
 
 @app.callback(
@@ -1899,6 +1855,8 @@ def update_cadernos(versao_sel, status_sel, tipo_sel, caderno_key, _):
         {"name": "% Conclusão", "id": "taxa_conclusao_pct"},
         {"name": "Lead Time Médio (dias)", "id": "avg_lead_time_dias"}
     ]
+    dff = add_latest_comment_column(dff, "caderno_chave")
+    tab_cols = add_latest_comment_column_definition(tab_cols)
     tab_data = dff[[c["id"] for c in tab_cols]].sort_values("total_demandas", ascending=False).to_dict("records")
 
     return kpi_cards, fig_progresso, fig_versoes, fig_cliq, fig_status, tab_data, tab_cols
@@ -1928,6 +1886,8 @@ def update_caderno_drilldown(caderno_sel, _):
     else:
         dff = df[df["parent_summary"] == caderno_sel]
 
+    dff = add_latest_comment_column(dff, "chave")
+    cols = add_latest_comment_column_definition(cols)
     tab_data = dff[[c["id"] for c in cols]].to_dict("records")
     return tab_data, cols
 
@@ -1955,6 +1915,7 @@ def download_cadernos_csv(n_clicks, versao_sel, status_sel, tipo_sel, caderno_ke
         dff = dff[dff["caderno_tipo"].isin(tipo_sel)]
     if caderno_key:
         dff = dff[dff["caderno_chave"].astype(str) == str(caderno_key)]
+    dff = add_latest_comment_column(dff, "caderno_chave")
     return dcc.send_data_frame(dff.to_csv, "cadernos_e_versoes_ccee.csv", index=False)
 
 
@@ -2118,6 +2079,8 @@ def update_demandas_finalizadas(resolucao_sel, prioridade_sel, relator_sel, dema
         {"name": "Subtarefas concluídas", "id": "subtarefas_concluidas"},
         {"name": "Temas / Regras", "id": "categorias"}
     ]
+    dff = add_latest_comment_column(dff, "chave")
+    tab_cols = add_latest_comment_column_definition(tab_cols)
     tab_data = (
         dff.sort_values("data_resolucao", ascending=False)[[column["id"] for column in tab_cols]]
         .to_dict("records")
@@ -2144,7 +2107,8 @@ def update_demanda_drilldown(demanda_key, _):
     if not demanda_key:
         return [], cols
 
-    df = get_demanda_subtarefas(demanda_key)
+    df = add_latest_comment_column(get_demanda_subtarefas(demanda_key), "chave")
+    cols = add_latest_comment_column_definition(cols)
     return df[[column["id"] for column in cols]].to_dict("records"), cols
 
 
@@ -2164,6 +2128,7 @@ def download_demandas_finalizadas(n_clicks, resolucao_sel, prioridade_sel, relat
     dff = filter_demandas_finalizadas(df, resolucao_sel, prioridade_sel, relator_sel)
     if demanda_key:
         dff = dff[dff["chave"].astype(str) == str(demanda_key)]
+    dff = add_latest_comment_column(dff, "chave")
     return dcc.send_data_frame(dff.to_csv, "demandas_finalizadas_regra_305.csv", index=False)
 
 
@@ -2462,6 +2427,8 @@ def update_consultas_tecnicas(situacao_sel, aging_sel, relator_sel, meta_sla_sel
         {"name": "Faixa Aging", "id": "faixa_aging"},
         {"name": "Temas / Regras", "id": "categorias"}
     ]
+    dff = add_latest_comment_column(dff, "chave")
+    tab_cols = add_latest_comment_column_definition(tab_cols)
     cols_to_dict = [c["id"] for c in tab_cols] + ["status_sla_simples"]
     tab_data = dff[cols_to_dict].to_dict("records")
 
@@ -2523,7 +2490,8 @@ def download_ct_csv(n_clicks, situacao_sel, aging_sel, relator_sel, meta_sla_sel
         "relator", "data_criacao_formatada", "data_resolucao_formatada",
         "lead_time_dias", "aging_dias", "faixa_aging", "categorias"
     ]
-    cols_exist = [c for c in cols_export if c in dff.columns]
+    dff = add_latest_comment_column(dff, "chave")
+    cols_exist = [c for c in cols_export if c in dff.columns] + ["ultimo_comentario"]
     return dcc.send_data_frame(dff[cols_exist].to_csv, "consultas_tecnicas_ccee.csv", index=False)
 
 
@@ -2625,6 +2593,8 @@ def update_geral(tipo_sel, prioridade_sel, situacao_sel, demanda_key, _, theme):
         {"name": "Lead Time (dias)", "id": "lead_time_dias"},
         {"name": "Relator", "id": "relator"}
     ]
+    dff = add_latest_comment_column(dff, "chave")
+    tab_cols = add_latest_comment_column_definition(tab_cols)
     tab_data = dff[[c["id"] for c in tab_cols]].to_dict("records")
 
     return cards, fig_tipos, fig_prioridade, fig_res, fig_evolucao, fig_leadtime, tab_data, tab_cols
@@ -2653,6 +2623,7 @@ def download_csv(n_clicks, tipo_sel, prioridade_sel, situacao_sel, demanda_key):
         dff = dff[dff["situacao"] == situacao_sel]
     if demanda_key:
         dff = dff[dff["chave"].astype(str) == str(demanda_key)]
+    dff = add_latest_comment_column(dff, "chave")
     return dcc.send_data_frame(dff.to_csv, "demandas_jira_filtradas.csv", index=False)
 
 

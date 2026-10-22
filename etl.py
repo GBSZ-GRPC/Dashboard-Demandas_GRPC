@@ -6,6 +6,7 @@ Extrai as coleções do conector Jira AIO e salva em banco local jira.duckdb.
 import sys
 import time
 import re
+import os
 from pathlib import Path
 import urllib3
 import requests
@@ -18,9 +19,20 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 # Suprime avisos de SSL em redes corporativas com proxy/inspeção de pacote
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-FEED_BASE_URL = "https://bi-reports.appfire.app/aio-app/rest/aio-cn/1.0/powerbi/export/NGI5NWQ0MDktOWVhMi00M2E5LWJiODctYWYxYjU5YWM5"
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
 DUCKDB_PATH = str(APP_DIR / "jira.duckdb")
+PROCEDURES_DUCKDB_PATH = str(APP_DIR / "procedimentos.duckdb")
+
+# Mantem o feed atual funcional; novas chaves devem ser configuradas no ambiente.
+LEGACY_RULES_FEED_URL = "https://bi-reports.app/aio-app/rest/aio-cn/1.0/powerbi/export/NGI5NWQ0MDktOWVhMi00M2E5LWJiODctYWYxYjU5YWM5"
+FEED_URL_ENV_VARS = {
+    "regras": "JIRA_REGRAS_FEED_URL",
+    "procedimentos": "JIRA_PROCEDIMENTOS_FEED_URL",
+}
+FEED_DATABASE_PATHS = {
+    "regras": DUCKDB_PATH,
+    "procedimentos": PROCEDURES_DUCKDB_PATH,
+}
 
 ENTITIES = [
     "Issues",
@@ -33,6 +45,22 @@ ENTITIES = [
 REQUEST_TIMEOUT = (15, 180)
 MAX_PAGE_ATTEMPTS = 4
 
+
+
+def get_feed_configuration(feed_name: str):
+    """Resolve URL e banco isolado do feed Jira solicitado."""
+    name = str(feed_name).strip().lower()
+    if name not in FEED_URL_ENV_VARS:
+        raise ValueError(f"Feed Jira desconhecido: {name}")
+
+    feed_url = os.environ.get(FEED_URL_ENV_VARS[name], "").strip()
+    if not feed_url and name == "regras":
+        feed_url = LEGACY_RULES_FEED_URL
+    if not feed_url:
+        raise RuntimeError(
+            f"Configure a variavel de ambiente {FEED_URL_ENV_VARS[name]} para habilitar este feed."
+        )
+    return feed_url.rstrip("/"), FEED_DATABASE_PATHS[name]
 
 def clean_colname(col: str) -> str:
     """Normaliza nomes de coluna para padrão SQL (snake_case limpo)."""
@@ -50,10 +78,13 @@ def clean_colname(col: str) -> str:
 def fetch_odata_entity(
     entity_name: str,
     session: requests.Session,
-    progress_callback=None
+    progress_callback=None,
+    feed_base_url=None
 ) -> pd.DataFrame:
     """Busca todos os registros de uma entidade OData lidando com paginação @odata.nextLink."""
-    url = f"{FEED_BASE_URL}/{requests.utils.quote(entity_name)}"
+    if not feed_base_url:
+        feed_base_url, _ = get_feed_configuration("regras")
+    url = f"{feed_base_url.rstrip('/')}/{requests.utils.quote(entity_name)}"
     records = []
     page = 1
     
@@ -214,8 +245,10 @@ def create_views(con):
     print("✅ Visões 'v_issues_analytics' e 'v_cadernos_analytics' criadas com sucesso!")
 
 
-def run_etl(progress_callback=None):
-    """Extrai todas as entidades e substitui o snapshot do DuckDB atomicamente."""
+def run_etl(progress_callback=None, feed_name="regras", database_path=None):
+    """Extrai um feed Jira para seu DuckDB isolado e substitui o snapshot atomicamente."""
+    feed_base_url, configured_database_path = get_feed_configuration(feed_name)
+    database_path = str(database_path or configured_database_path)
     print("=" * 60)
     print("INICIANDO SINCRONIZACAO JIRA -> DUCKDB")
     print("=" * 60)
@@ -243,7 +276,7 @@ def run_etl(progress_callback=None):
                 key: value for key, value in event.items() if key != "message"
             })
 
-        df = fetch_odata_entity(entity, session, page_progress)
+        df = fetch_odata_entity(entity, session, page_progress, feed_base_url)
         if df.empty:
             raise RuntimeError(
                 f"A entidade obrigatória '{entity}' retornou zero registros. "
@@ -258,7 +291,8 @@ def run_etl(progress_callback=None):
         )
 
     report(85, "Gravando novo snapshot no DuckDB")
-    con = duckdb.connect(DUCKDB_PATH)
+    Path(database_path).parent.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect(database_path)
     try:
         con.execute("BEGIN TRANSACTION")
 

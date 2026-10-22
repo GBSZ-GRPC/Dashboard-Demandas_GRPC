@@ -34,11 +34,6 @@
     color: var(--dark-text) !important;
 }
 
-.theme-dark .latest-comment-card.card,
-.theme-dark .latest-comment-card .card-body {
-    color: var(--dark-text) !important;
-}
-
 .theme-dark .text-dark,
 .theme-dark .text-body,
 .theme-dark .fw-bold,

@@ -2,9 +2,25 @@
 
 Este manual descreve a arquitetura e as práticas para manter o dashboard de demandas de regras. Foi atualizado com base nos arquivos presentes no repositório (`app.py`, `etl.py`, `launcher.py`, folhas CSS e configuração de deploy). Números de registros e cadernos variam com cada sincronização; por isso, não são tratados como constantes do sistema.
 
+
+## Prompt reutilizavel: adicionar o feed Appfire de Procedimentos
+
+Copie o texto abaixo para o Codex junto com o link base do novo feed. Ele registra o contexto e os limites da alteracao para que possa ser usado em outra conversa ou conta.
+
+```text
+Quero preparar este projeto para integrar um segundo feed OData do Appfire/Jira, agora do espaco de Procedimentos. O link base do novo feed e:
+[COLE AQUI O LINK COMPLETO DO APPFIRE]
+
+Antes de alterar, leia GESTAO_CODIGO_PYTHON.md e inspecione etl.py, app.py e os arquivos de configuracao relevantes. O projeto ja tem suporte a feeds nomeados em get_feed_configuration(), run_etl(feed_name=...) e bancos separados: Regras usa jira.duckdb e Procedimentos deve usar procedimentos.duckdb.
+
+Minha preferencia e guardar o novo link em uma constante clara no codigo, em etl.py, ao lado da configuracao do feed de Regras, em vez de exigir que eu configure uma variavel de ambiente. Ajuste get_feed_configuration() para resolver o feed "procedimentos" por essa constante. Preserve a compatibilidade do feed de Regras e nao substitua nem misture sua URL, seus dados ou seu banco.
+
+Nesta etapa, implemente apenas a configuracao e a integracao do novo feed ao ETL compartilhado. Nao crie ainda o dashboard de Procedimentos nem altere o visual atual. Mantenha o banco de Procedimentos isolado e confirme que a sincronizacao existente continua apontando para Regras. Atualize esta documentacao com a configuracao final e explique como chamar run_etl(feed_name="procedimentos"). Nao publique o sistema e nao execute uma sincronizacao real do Appfire. Ao final, liste arquivos alterados, motivo e qualquer configuracao manual que ainda seja necessaria.
+```
+
 ## 1. Visão da solução
 
-O projeto separa extração, armazenamento analítico e interface. O ETL consulta quatro entidades do feed OData do Appfire/Jira, grava o snapshot no DuckDB em transação, e o Dash lê as views para montar as análises.
+O projeto separa extração, armazenamento analítico e interface. O ETL consulta cinco entidades do feed OData do Appfire/Jira, grava o snapshot no DuckDB em transação, e o Dash lê as views para montar as análises.
 
 ```mermaid
 flowchart LR
@@ -35,9 +51,15 @@ flowchart LR
 
 ## 2. ETL e modelo de dados (`etl.py`)
 
+### Configuracao de multiplos feeds Appfire
+
+`get_feed_configuration()` resolve cada feed por nome, URL de ambiente e banco DuckDB independente. O feed atual aceita `JIRA_REGRAS_FEED_URL` como sobrescrita e mantem o endpoint legado como compatibilidade. A implementacao atual tambem aceita `JIRA_PROCEDIMENTOS_FEED_URL`; por preferencia do responsavel, ao integrar o link real de Procedimentos, use uma constante no codigo e ajuste `get_feed_configuration()` para le-la. O link e a URL base completa do Appfire, sem o nome da entidade no final.
+
+`run_etl(feed_name="regras")` preserva a sincronizacao atual. Para o futuro modulo, `run_etl(feed_name="procedimentos")` grava em `procedimentos.duckdb`, separado de `jira.duckdb`, evitando que tabelas ou views dos dois espacos se sobrescrevam. O ETL compartilha a mesma rotina de extracao e entidades OData; o modulo de Procedimentos ainda precisara implementar suas proprias consultas, views e interface sobre o banco correspondente.
+
 ### Extração
 
-`ENTITIES` define as entidades necessárias: `Issues`, `Categorias`, `Subtarefas` e `Sprints`. `fetch_odata_entity()` percorre as páginas indicadas por `@odata.nextLink`, usa uma sessão HTTP, timeout de conexão/leitura `(15, 180)` e até quatro tentativas por página, com espera progressiva. Eventos de página e falhas transitórias são enviados ao callback de progresso.
+`ENTITIES` define as cinco entidades necessarias: `Issues`, `Comments`, `Categorias`, `Subtarefas` e `Sprints`. `fetch_odata_entity()` percorre as páginas indicadas por `@odata.nextLink`, usa uma sessão HTTP, timeout de conexão/leitura `(15, 180)` e até quatro tentativas por página, com espera progressiva. Eventos de página e falhas transitórias são enviados ao callback de progresso.
 
 `clean_colname()` converte nomes recebidos em identificadores de coluna padronizados. Os dados extraídos são reunidos em DataFrames Pandas antes do início da escrita no banco. Entidade obrigatória vazia interrompe a carga.
 
@@ -73,7 +95,7 @@ Os filtros e tabelas trabalham sobre os dados retornados pelas funções de aces
 
 ### Acesso ao DuckDB e comentário recente
 
-As funções `get_data()`, `get_cadernos_data()`, `get_demandas_finalizadas_data()` e `get_demanda_subtarefas()` consultam o banco em modo `read_only=True`. O caminho do banco é calculado em relação à aplicação/executável. `get_latest_jira_comment()` consulta a tabela `comments`, carregada pela entidade `Comments` do feed OData. Ela ordena pela data de criação (ou, se a coluna não existir, pela data de atualização) e remove qualquer conteúdo entre colchetes antes de exibir o comentário. A entidade precisa estar habilitada no feed do conector Appfire.
+As funções `get_data()`, `get_cadernos_data()`, `get_demandas_finalizadas_data()` e `get_demanda_subtarefas()` consultam o banco em modo `read_only=True`. O caminho do banco é calculado em relação à aplicação/executável. `get_latest_jira_comments_by_issue()` consulta a tabela `comments`, seleciona o comentário mais recente por chave Jira usando a data de criação (ou, se não existir, a data de atualização) e remove qualquer conteúdo entre colchetes. As tabelas de demandas e cadernos usam essa função para preencher a coluna `Último comentário` correspondente a cada chave. A entidade precisa estar habilitada no feed do conector Appfire.
 
 ### Sincronização sem bloquear a interface
 
@@ -113,7 +135,7 @@ Documente comportamento observado no código, não totais incidentais do banco. 
 
 ## 6. Segurança e governança
 
-- O feed OData é configurado em `FEED_BASE_URL` no código. Trate esse identificador como informação interna; a evolução recomendada é carregá-lo de configuração protegida/variável de ambiente antes de distribuir o repositório ou o executável.
+- As URLs dos feeds OData sao resolvidas por `JIRA_REGRAS_FEED_URL` e `JIRA_PROCEDIMENTOS_FEED_URL`; mantenha as chaves em variaveis de ambiente e nao as registre em logs nem no controle de versao.
 - A extração usa `verify=False` e suprime o aviso de certificado para compatibilidade com inspeção SSL corporativa. Isso desativa a validação TLS do cliente; prefira configurar a cadeia de certificados confiável quando o ambiente permitir.
 - A interface abre o DuckDB em leitura; apenas o ETL escreve. Preserve essa separação ao criar novas rotinas.
 - Não registre tokens, credenciais nem URLs completas sensíveis em mensagens de erro ou logs.
