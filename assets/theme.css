@@ -125,6 +125,11 @@ color: var(--dark-surface) !important;
     background-color: var(--dark-bg) !important;
 }
 
+/* O seletor por ID acima é mais específico que o fundo geral da sidebar. */
+.theme-dark #main-tabs {
+    background-color: var(--dark-surface) !important;
+}
+
 .theme-dark .nav-tabs .nav-link {
     background-color: var(--dark-surface);
     color: var(--dark-text) !important;
