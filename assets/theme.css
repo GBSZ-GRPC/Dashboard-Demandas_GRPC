@@ -22,7 +22,7 @@
 .theme-dark .dropdown-menu,
 .theme-dark .list-group-item {
     background-color: var(--dark-surface) !important;
-    color: var(--dark-surface) !important;
+    color: var(--dark-text) !important;
     border-color: var(--dark-border) !important;
 }
 
@@ -113,6 +113,11 @@ color: var(--dark-surface) !important;
 
 .theme-dark .nav-tabs {
     background-color: var(--dark-bg);
+}
+
+/* A nav da sidebar usa lacunas entre abas; mantenha o fundo igual ao painel. */
+.theme-dark .sidebar .nav-tabs {
+    background-color: var(--dark-surface) !important;
 }
 
 .theme-dark #main-tabs,
