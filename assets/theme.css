@@ -44,7 +44,7 @@
 
 /* Label dos inputs */
 .theme-dark label {
-color: var(--dark-surface) !important;
+    color: var(--dark-text) !important;
 
 }
 
@@ -87,6 +87,63 @@ color: var(--dark-surface) !important;
 .theme-dark .dash-dropdown-options-list-option-text,
 .theme-dark .dash-dropdown-options-list-option-text * {
     color: #111827 !important;
+}
+
+.theme-dark .dash-dropdown-placeholder,
+.theme-dark .dash-dropdown-value,
+.theme-dark input::placeholder,
+.theme-dark textarea::placeholder {
+    color: #475569 !important;
+    opacity: 1 !important;
+}
+
+/* Placeholders e valores precisam manter contraste em todos os controles do site. */
+.theme-light input::placeholder,
+.theme-light textarea::placeholder,
+.theme-light .dash-dropdown-placeholder,
+.theme-light .Select-placeholder {
+    color: #64748b !important;
+    opacity: 1 !important;
+}
+
+.theme-light .dash-dropdown-value:not(.dash-dropdown-placeholder),
+.theme-light .Select-value-label {
+    color: #1e293b !important;
+    opacity: 1 !important;
+}
+
+.theme-dark .dash-dropdown-trigger,
+.theme-dark .dash-dropdown-value:not(.dash-dropdown-placeholder),
+.theme-dark .dash-dropdown-search,
+.theme-dark .dash-dropdown-option,
+.theme-dark .dash-dropdown-option *,
+.theme-dark .Select-value-label,
+.theme-dark .Select-input > input,
+.theme-dark .form-control,
+.theme-dark .form-select {
+    color: #111827 !important;
+    opacity: 1 !important;
+}
+
+.theme-dark .dash-dropdown-placeholder,
+.theme-dark .Select-placeholder,
+.theme-dark .form-control::placeholder,
+.theme-dark .form-select::placeholder,
+.theme-dark input::placeholder,
+.theme-dark textarea::placeholder {
+    color: #475569 !important;
+    opacity: 1 !important;
+}
+
+.theme-dark .dash-table-container input::placeholder {
+    color: var(--dark-muted) !important;
+}
+
+/* O menu dos dropdowns tem fundo claro nos dois temas. */
+.dash-dropdown-content,
+.dash-dropdown-option,
+.dash-dropdown-option * {
+    color: #1e293b !important;
 }
 
 .theme-dark .dash-table-container .dash-spreadsheet-container,
