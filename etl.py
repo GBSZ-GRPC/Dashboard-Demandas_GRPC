@@ -24,7 +24,7 @@ DUCKDB_PATH = str(APP_DIR / "jira.duckdb")
 PROCEDURES_DUCKDB_PATH = str(APP_DIR / "procedimentos.duckdb")
 
 # Mantem o feed atual funcional; novas chaves devem ser configuradas no ambiente.
-LEGACY_RULES_FEED_URL = "https://bi-reports.app/aio-app/rest/aio-cn/1.0/powerbi/export/NGI5NWQ0MDktOWVhMi00M2E5LWJiODctYWYxYjU5YWM5"
+LEGACY_RULES_FEED_URL = "https://bi-reports.appfire.app/aio-app/rest/aio-cn/1.0/powerbi/export/NGI5NWQ0MDktOWVhMi00M2E5LWJiODctYWYxYjU5YWM5"
 FEED_URL_ENV_VARS = {
     "regras": "JIRA_REGRAS_FEED_URL",
     "procedimentos": "JIRA_PROCEDIMENTOS_FEED_URL",

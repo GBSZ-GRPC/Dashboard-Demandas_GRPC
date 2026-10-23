@@ -215,12 +215,25 @@ def describe_sync_error(exc):
     """Converte a cadeia de exceções em uma mensagem segura e acionável."""
     error_types = set()
     seen_errors = set()
-    current = exc
-    while current is not None and id(current) not in seen_errors:
+    pending_errors = [exc]
+    while pending_errors:
+        current = pending_errors.pop()
+        if not isinstance(current, BaseException) or id(current) in seen_errors:
+            continue
         seen_errors.add(id(current))
         error_types.add(type(current).__name__)
-        current = current.__cause__ or current.__context__
+        pending_errors.extend(
+            nested for nested in (current.__cause__, current.__context__, getattr(current, "reason", None))
+            if isinstance(nested, BaseException)
+        )
+        pending_errors.extend(nested for nested in current.args if isinstance(nested, BaseException))
 
+    if "NameResolutionError" in error_types or "gaierror" in error_types:
+        return (
+            "Falha de DNS: não foi possível localizar o servidor do feed Jira. "
+            "Conecte-se à VPN/rede corporativa ou verifique o DNS e tente novamente. "
+            "O snapshot anterior foi preservado."
+        )
     if "ProxyError" in error_types or "ConnectionError" in error_types:
         return (
             "Falha de conexão com o Jira ou com o proxy corporativo. "
@@ -260,7 +273,7 @@ def run_sync_worker():
         )
     except Exception as exc:
         error_message = describe_sync_error(exc)
-        print(f"❌ Sincronização abortada ({type(exc).__name__})")
+        print(f"❌ Sincronização abortada ({type(exc).__name__}): {error_message}")
         update_sync_state(
             status="error",
             message=error_message,
