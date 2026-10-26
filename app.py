@@ -1058,7 +1058,7 @@ def _build_tab_layout(active_tab):
             # Descrição do Módulo
             dbc.Alert([
                 html.Div([
-                    html.I(className="fa-solid fa-circle-info fa-lg me-2 text-primary"),
+                    html.I(className="fa-solid fa-circle-info fa-lg me-2 consultas-module-info-icon"),
                     html.Strong("Módulo de Consultas Técnicas: "),
                     html.Span("Monitoramento especializado de tempo de ciclo (Lead Time), fila de espera (Aging), metas dinâmicas de SLA, conformidade e temas regulatórios mais frequentes.")
                 ], className="d-flex align-items-center")

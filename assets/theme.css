@@ -202,6 +202,15 @@
     border-color: var(--dark-border) !important;
 }
 
+/* Destaque do ícone introdutório de Consultas Técnicas no fundo escuro. */
+.consultas-module-info-icon {
+    color: #2563eb;
+}
+
+.theme-dark .consultas-module-info-icon {
+    color: #7dd3fc !important;
+}
+
 .theme-dark .js-plotly-plot .xtick text,
 .theme-dark .js-plotly-plot .ytick text,
 .theme-dark .js-plotly-plot .text,
