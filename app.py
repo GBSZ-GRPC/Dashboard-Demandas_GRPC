@@ -413,7 +413,7 @@ def build_demandas_finalizadas_layout():
                             multi=True,
                             className="shadow-none"
                         )
-                    ], md=4, sm=12, className="mb-2 mb-md-0"),
+                    ], lg=3, md=6, sm=12, className="mb-2 mb-lg-0"),
                     dbc.Col([
                         html.Label(
                             [html.I(className="fa-solid fa-flag me-1 text-warning"), "Prioridade:"],
@@ -425,7 +425,7 @@ def build_demandas_finalizadas_layout():
                             multi=True,
                             className="shadow-none"
                         )
-                    ], md=4, sm=12, className="mb-2 mb-md-0"),
+                    ], lg=3, md=6, sm=12, className="mb-2 mb-lg-0"),
                     dbc.Col([
                         html.Label(
                             [html.I(className="fa-solid fa-user me-1 text-primary"), "Relator:"],
@@ -437,7 +437,7 @@ def build_demandas_finalizadas_layout():
                             multi=True,
                             className="shadow-none"
                         )
-                    ], md=4, sm=12)
+                    ], lg=3, md=6, sm=12, className="mb-2 mb-lg-0"),
                 ])
             ]),
             className="shadow-sm border-0 mb-4 rounded-4"
@@ -1384,7 +1384,20 @@ def _build_tab_layout(active_tab):
                             clearable=False,
                             className="shadow-none"
                         )
-                    ], md=4, sm=12)
+                    ], md=3, sm=12),
+                    dbc.Col([
+                        html.Label([html.I(className="fa-solid fa-calendar-days me-1 text-info"), "Evolução por:"], className="fw-semibold text-muted small mb-1"),
+                        localized_dropdown(
+                            id="filter-evolucao-referencia",
+                            options=[
+                                {"label": "Abertura de demandas", "value": "abertura"},
+                                {"label": "Fechamento de demandas", "value": "fechamento"}
+                            ],
+                            value="abertura",
+                            clearable=False,
+                            className="shadow-none"
+                        )
+                    ], md=3, sm=12)
                 ])
             ]),
             className="shadow-sm border-0 mb-4 rounded-4"
@@ -1442,7 +1455,11 @@ def _build_tab_layout(active_tab):
                     dbc.CardHeader(
                         html.Div([
                             html.I(className="fa-solid fa-chart-line text-primary me-2"),
-                            html.Span("Evolução Histórica de Criação de Demandas", className="fw-bold")
+                            html.Span(
+                                "Evolução Histórica de Criação por Processo",
+                                id="chart-evolucao-title",
+                                className="fw-bold"
+                            )
                         ], className="d-flex align-items-center"),
                         className="bg-transparent border-0 pt-3 px-3"
                     ),
@@ -2516,6 +2533,7 @@ def download_ct_csv(n_clicks, situacao_sel, aging_sel, relator_sel, meta_sla_sel
         Output("chart-prioridade", "figure"),
         Output("chart-resolucao", "figure"),
         Output("chart-evolucao", "figure"),
+        Output("chart-evolucao-title", "children"),
         Output("chart-leadtime", "figure"),
         Output("tabela-demandas", "data"),
         Output("tabela-demandas", "columns")
@@ -2525,11 +2543,16 @@ def download_ct_csv(n_clicks, situacao_sel, aging_sel, relator_sel, meta_sla_sel
         Input("filter-prioridade", "value"),
         Input("filter-situacao", "value"),
         Input("geral-search-resumo", "value"),
+        Input("filter-evolucao-referencia", "value"),
         Input("store-data-trigger", "data"),
-        Input("theme-store", "data")
+        Input("theme-store", "data"),
+        Input("main-tabs", "active_tab")
     ]
 )
-def update_geral(tipo_sel, prioridade_sel, situacao_sel, demanda_key, _, theme):
+def update_geral(tipo_sel, prioridade_sel, situacao_sel, demanda_key, evolucao_referencia, _, theme, active_tab):
+    # Como o conteúdo das abas é montado dinamicamente, a primeira chamada pode
+    # ocorrer antes de o dropdown ter fornecido seu valor inicial.
+    evolucao_referencia = evolucao_referencia or "abertura"
     df, _ = get_data()
     dff = df.copy()
     if tipo_sel:
@@ -2584,9 +2607,72 @@ def update_geral(tipo_sel, prioridade_sel, situacao_sel, demanda_key, _, theme):
     fig_res.update_layout(margin=dict(l=20, r=20, t=10, b=20), plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=320, yaxis=dict(title=""))
     fig_res.update_traces(textposition="outside")
 
-    df_evolucao = dff.groupby("mes_criacao").size().reset_index(name="qtd").sort_values("mes_criacao")
-    fig_evolucao = px.area(df_evolucao, x="mes_criacao", y="qtd", markers=True, color_discrete_sequence=[COLORS["secondary"]])
-    fig_evolucao.update_layout(margin=dict(l=20, r=20, t=10, b=20), plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=280)
+    # A taxonomia é inferida dos rótulos e do resumo do Jira. A ordem evita que um
+    # item com mais de uma etiqueta seja contado em dois processos diferentes.
+    def classify_process(row):
+        searchable = f"{row.get('categorias', '')} {row.get('resumo', '')}".casefold()
+        if any(term in searchable for term in ("carta", "ofício", "oficio")):
+            return "Cartas / Ofícios"
+        if "pdc" in searchable:
+            return "PdCs"
+        if "suporte" in searchable:
+            return "Suporte"
+        if "regulat" in searchable:
+            return "Regulatório"
+        if "regra" in searchable:
+            return "Regras"
+        return "Outros / sem classificação"
+
+    process_colors = {
+        "Cartas / Ofícios": "#F97316",
+        "PdCs": "#8B5CF6",
+        "Suporte": "#06B6D4",
+        "Regulatório": "#EC4899",
+        "Regras": "#2563EB",
+        # Tom mais fechado para manter a categoria residual em segundo plano.
+        "Outros / sem classificação": "#64748B"
+    }
+    process_order = list(process_colors)
+    coluna_data_evolucao = "data_resolucao" if evolucao_referencia == "fechamento" else "data_criacao"
+    rotulo_data_evolucao = "Mês de fechamento" if evolucao_referencia == "fechamento" else "Mês de abertura"
+    titulo_evolucao = (
+        "Evolução Histórica de Fechamento por Processo"
+        if evolucao_referencia == "fechamento"
+        else "Evolução Histórica de Criação por Processo"
+    )
+    df_evolucao = dff.dropna(subset=[coluna_data_evolucao]).copy()
+    df_evolucao["processo"] = df_evolucao.apply(classify_process, axis=1)
+    df_evolucao["mes_referencia"] = df_evolucao[coluna_data_evolucao].dt.to_period("M").astype(str)
+    df_evolucao = (
+        df_evolucao.groupby(["mes_referencia", "processo"])
+        .size()
+        .reset_index(name="qtd")
+        .sort_values("mes_referencia")
+    )
+    if df_evolucao.empty:
+        fig_evolucao = go.Figure()
+        fig_evolucao.add_annotation(
+            text="Nenhuma demanda com data disponível para os filtros selecionados.",
+            x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False
+        )
+    else:
+        fig_evolucao = px.bar(
+            df_evolucao,
+            x="mes_referencia",
+            y="qtd",
+            color="processo",
+            barmode="stack",
+            category_orders={"processo": process_order},
+            color_discrete_map=process_colors,
+            labels={"mes_referencia": rotulo_data_evolucao, "qtd": "Demandas", "processo": "Processo"}
+        )
+    fig_evolucao.update_layout(
+        margin=dict(l=20, r=20, t=10, b=35),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        height=300,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0)
+    )
 
     df_lt = dff[dff["situacao"] == "Concluído"].groupby("tipo_de_item")["lead_time_dias"].mean().reset_index()
     df_lt["lead_time_dias"] = df_lt["lead_time_dias"].round(1)
@@ -2610,7 +2696,7 @@ def update_geral(tipo_sel, prioridade_sel, situacao_sel, demanda_key, _, theme):
     tab_cols = add_latest_comment_column_definition(tab_cols)
     tab_data = dff[[c["id"] for c in tab_cols]].to_dict("records")
 
-    return cards, fig_tipos, fig_prioridade, fig_res, fig_evolucao, fig_leadtime, tab_data, tab_cols
+    return cards, fig_tipos, fig_prioridade, fig_res, fig_evolucao, titulo_evolucao, fig_leadtime, tab_data, tab_cols
 
 
 # Callback de download CSV da Aba 1 (Geral)
