@@ -2595,11 +2595,20 @@ def update_geral(tipo_sel, prioridade_sel, situacao_sel, demanda_key, evolucao_r
     )
     priority_text_color = "#FFFFFF" if theme == "dark" else COLORS["text"]
     fig_prioridade.update_traces(
-        textfont={"color": priority_text_color},
-        insidetextfont={"color": priority_text_color},
-        outsidetextfont={"color": priority_text_color}
+        textfont=dict(color=priority_text_color),
+        insidetextfont=dict(color=priority_text_color),
+        outsidetextfont=dict(color=priority_text_color),
+        automargin=True
     )
-    fig_prioridade.update_layout(margin=dict(l=10, r=10, t=10, b=20), height=320)
+    fig_prioridade.update_layout(
+        template="plotly_dark" if theme == "dark" else "plotly_white",
+        font=dict(color=priority_text_color),
+        legend=dict(font=dict(color=priority_text_color)),
+        margin=dict(l=10, r=10, t=10, b=20),
+        height=320,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)"
+    )
 
     df_res = dff["resolucao"].fillna("Não Resolvido (Em Aberto)").value_counts().reset_index()
     df_res.columns = ["resolucao", "qtd"]

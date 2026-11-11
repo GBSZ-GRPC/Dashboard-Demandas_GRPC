@@ -267,7 +267,14 @@
     fill: transparent !important;
 }
 
-.theme-dark .js-plotly-plot .slice,
+.theme-dark .js-plotly-plot .slice > path,
 .theme-dark .js-plotly-plot .pielayer path {
     stroke: #111111 !important;
+}
+
+/* O contorno dos setores não deve ser herdado pelos percentuais. */
+.theme-dark .js-plotly-plot .pielayer text,
+.theme-dark .js-plotly-plot .pielayer tspan {
+    stroke: none !important;
+    fill: #ffffff !important;
 }
